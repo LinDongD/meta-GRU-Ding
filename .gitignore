@@ -1,0 +1,7 @@
+/Data/
+/.venv/
+/artifacts/
+/outputs/
+/tmp/
+__pycache__/
+*.py[cod]

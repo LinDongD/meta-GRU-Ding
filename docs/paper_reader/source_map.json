@@ -1,0 +1,43 @@
+{
+  "paper": {
+    "title": "Meta deep learning based rotating machinery health prognostics toward few-shot prognostics",
+    "venue": "Applied Soft Computing 104 (2021) 107211",
+    "source_type": "pdf",
+    "language": "en",
+    "source_path": "D:/project/meta GRU/1-s2.0-S1568494621001344-main.pdf"
+  },
+  "blocks": [
+    {"id": "S001", "page": 4, "type": "paragraph", "order": 1, "original_text": "MDL framework and six-stage workflow", "translation": "MDL总体流程", "bbox": [0, 0, 0, 0], "confidence": "high", "refs": ["F001"], "insert_after": "S001"},
+    {"id": "S002", "page": 5, "type": "paragraph", "order": 2, "original_text": "TSUDA covariance and MMD alignment", "translation": "TSUDA协方差与MMD对齐", "bbox": [0, 0, 0, 0], "confidence": "high", "refs": ["E001"], "insert_after": "S002"},
+    {"id": "E001", "page": 5, "type": "equation", "order": 3, "equation_number": "6", "latex": "\\mathcal{L}_{UDA}=\\delta_n^s(W_s^\\top\\Sigma_sW_s,W_t^\\top\\Sigma_tW_t)+\\operatorname{MMD}(X_sW_s,X_tW_t)", "bbox": [0, 0, 0, 0], "confidence": "medium", "image_path": null},
+    {"id": "S003", "page": 6, "type": "paragraph", "order": 4, "original_text": "Meta-GRU inner and outer optimization", "translation": "Meta-GRU内外循环优化", "bbox": [0, 0, 0, 0], "confidence": "high", "refs": ["E002", "E003", "F002"], "insert_after": "S003"},
+    {"id": "E002", "page": 6, "type": "equation", "order": 5, "equation_number": "12", "latex": "\\phi_i\\leftarrow\\theta-\\alpha\\nabla_\\theta\\mathcal{L}(\\theta,D^{support}_{T_i})", "bbox": [0, 0, 0, 0], "confidence": "high", "image_path": null},
+    {"id": "E003", "page": 6, "type": "equation", "order": 6, "equation_number": "14", "latex": "\\min_\\theta\\sum_{T_i\\sim p(T)}\\mathcal{L}(\\phi_i,D^{query}_{T_i})", "bbox": [0, 0, 0, 0], "confidence": "high", "image_path": null},
+    {"id": "S004", "page": 8, "type": "paragraph", "order": 7, "original_text": "Thirty features and 99 percent PCA", "translation": "30个特征与99% PCA", "bbox": [0, 0, 0, 0], "confidence": "high", "refs": [], "insert_after": "S004"},
+    {"id": "S005", "page": 9, "type": "paragraph", "order": 8, "original_text": "Two channels, health labels and cross-condition validation", "translation": "双通道、健康度标签和跨工况验证", "bbox": [0, 0, 0, 0], "confidence": "high", "refs": [], "insert_after": "S005"},
+    {"id": "S006", "page": 18, "type": "table_row", "order": 9, "original_text": "Table A.3 hyperparameters", "translation": "表A.3超参数", "bbox": [0, 0, 0, 0], "confidence": "high", "refs": [], "insert_after": "S006"}
+  ],
+  "pages": [
+    {"page": 4, "block_ids": ["S001"]},
+    {"page": 5, "block_ids": ["S002", "E001"]},
+    {"page": 6, "block_ids": ["S003", "E002", "E003"]},
+    {"page": 8, "block_ids": ["S004"]},
+    {"page": 9, "block_ids": ["S005"]},
+    {"page": 18, "block_ids": ["S006"]}
+  ],
+  "figures": [
+    {"id": "F001", "page": 8, "caption_id": "C001", "image_path": "assets/fig6_meta_gru_pipeline.png", "bbox": [85, 80, 900, 300], "placement_hint": "near_first_mention", "placed_after": "S001", "alt_text": "Meta-GRU health prognostics pipeline"},
+    {"id": "F002", "page": 9, "caption_id": "C002", "image_path": "assets/algorithm3_meta_gru.png", "bbox": [150, 140, 1095, 845], "placement_hint": "near_first_mention", "placed_after": "S003", "alt_text": "Algorithm 3 Meta-GRU for few-shot prognostics"}
+  ],
+  "equations": [
+    {"id": "E001", "page": 5, "equation_number": "6", "latex": "\\mathcal{L}_{UDA}=\\delta_n^s(W_s^\\top\\Sigma_sW_s,W_t^\\top\\Sigma_tW_t)+\\operatorname{MMD}(X_sW_s,X_tW_t)", "bbox": [0, 0, 0, 0], "confidence": "medium", "image_path": null},
+    {"id": "E002", "page": 6, "equation_number": "12", "latex": "\\phi_i\\leftarrow\\theta-\\alpha\\nabla_\\theta\\mathcal{L}(\\theta,D^{support}_{T_i})", "bbox": [0, 0, 0, 0], "confidence": "high", "image_path": null},
+    {"id": "E003", "page": 6, "equation_number": "14", "latex": "\\min_\\theta\\sum_{T_i\\sim p(T)}\\mathcal{L}(\\phi_i,D^{query}_{T_i})", "bbox": [0, 0, 0, 0], "confidence": "high", "image_path": null}
+  ],
+  "glossary": [
+    {"term": "Meta-GRU", "translation": "元学习门控循环单元", "note": "canonical"},
+    {"term": "support set", "translation": "支持集", "note": "inner-loop adaptation"},
+    {"term": "query set", "translation": "查询集", "note": "outer-loop optimization or evaluation"},
+    {"term": "TSUDA", "translation": "时间序列无监督域适配", "note": "paper method; approximated in code"}
+  ]
+}

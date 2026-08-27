@@ -1,0 +1,32 @@
+# 极小规模端到端冒烟配置：只用于确认代码、CUDA、输出和绘图可用。
+seed: 42
+data_root: Data
+source_condition: 1
+target_condition: 2
+pca_variance: 0.99
+channels: both
+alignment: coral_mmd
+
+search:
+  trials: 1
+  validation_bearings: 2
+  episodes_per_validation_bearing: 1
+  epochs_per_trial: 1
+  hidden_size: [16]
+  num_layers: [1]
+  dropout: [0.0]
+  window_size: [8]
+  inner_steps: [1]
+  inner_lr: [0.001, 0.001]
+  outer_lr: [0.001, 0.001]
+  weight_decay: [0.0]
+  meta_batch_size: [2]
+  support_size: [5]
+  query_size: [8]
+  first_order: [true]
+
+train:
+  epochs: 1
+  gradient_clip: 5.0
+  target_trials: 1
+  device: auto
