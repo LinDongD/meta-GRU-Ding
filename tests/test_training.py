@@ -21,11 +21,14 @@ def test_fit_model_writes_epoch_metrics(workspace_tmp_path: Path) -> None:
         "outer_lr": 1e-3,
         "weight_decay": 0.0,
         "meta_batch_size": 2,
+        "subtasks_per_epoch": 2,
         "support_size": 4,
         "query_size": 4,
         "inner_lr": 1e-2,
         "inner_steps": 1,
         "first_order": True,
+        "inner_optimizer": "adam",
+        "output_activation": "sigmoid",
     }
     path = workspace_tmp_path / "epoch_metrics.csv"
     logger = EpochMetricLogger(path)

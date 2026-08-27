@@ -8,8 +8,9 @@
 - 每个通道提取论文 Tables A.1-A.2 的 30 个时域/频域统计量；默认拼接为 60 维。
 - 用源域拟合标准化和 PCA，累计解释方差为 99%。
 - 用均值匹配（线性 MMD）与 CORAL 协方差匹配实现稳定的 TSUDA 近似。
-- 将每个源域轴承视为一个任务，构造不相交的 support/query 集合。
-- 用可微内循环和跨任务外循环实现一阶或二阶 MAML Meta-GRU。
+- 每个 epoch 从合并源域随机生成 20 个子任务，构造不相交的 support/query 集合。
+- 把健康度归一化为 0–1，并用 sigmoid 将预测约束到有效 RUL 区间。
+- 用可微 Adam 内循环和跨任务外循环实现一阶或二阶 MAML Meta-GRU。
 - 在源域留出轴承上进行随机超参数搜索，再用全部源域训练，最后执行目标域 few-shot 适配与评估。
 
 论文明确设置为：100 epochs、内外学习率均为 `1e-4`、20 个 subtasks、目标域 support/query 各 9 对样本。论文没有公开 GRU 隐藏层维度、层数和序列窗口等足够细节，所以默认配置把它们纳入搜索，而不是猜成一个“原文值”。
@@ -46,6 +47,7 @@ python -m meta_gru.train --config configs/search.yaml --output-dir outputs/c1_to
 | `metrics/target_trial_metrics.csv` | 每个目标轴承、每次 few-shot trial 的 MAE/RMSE |
 | `metrics/target_query_predictions.csv` | 所有目标 query 点的真实 RUL、预测 RUL、残差和绝对误差 |
 | `metrics/target_full_curves.csv` | 每个目标轴承的完整寿命预测曲线及 support 点标记 |
+| `metrics/domain_alignment_diagnostics.csv` | 对齐前后的均值、协方差和 RBF-MMD 距离 |
 | `plots/epoch_loss_rmse.png` | 所有 epoch 的 loss/RMSE 曲线 |
 | `plots/training_diagnostics.png` | 梯度范数、epoch 耗时和 CUDA 峰值显存 |
 | `plots/hyperparameter_search_mae.png` | 超参数试验验证 MAE |
@@ -55,6 +57,8 @@ python -m meta_gru.train --config configs/search.yaml --output-dir outputs/c1_to
 | `plots/target_trial_mae_rmse.png` | 不同目标轴承多次试验的 MAE/RMSE 箱线图 |
 
 CSV 使用 `utf-8-sig` 编码，可直接用 Excel、Python、Origin 或 MATLAB 读取并重新作图。模型参数保存为 `model.pt`，完整汇总保存为 `summary.json`。
+
+`summary.json` 还会同时报告不使用域对齐时的目标 MAE、域对齐带来的 MAE 改善量，以及常数 50 基线；这能区分“分布距离变小”和“预测真正改善”。
 
 其中 `smoke.yaml` 只运行极小规模训练，用于确认特征缓存、CUDA、训练、保存和绘图整条流水线；确认无误后再运行 `search.yaml`。如果要自行调整，可修改：
 

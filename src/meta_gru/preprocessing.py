@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import numpy as np
 from sklearn.decomposition import PCA
+from sklearn.metrics.pairwise import rbf_kernel
 from sklearn.preprocessing import StandardScaler
 
 from .features import BearingSeries
@@ -63,9 +64,65 @@ class SourcePreprocessor:
 
 
 def make_windows(series: BearingSeries, window_size: int) -> tuple[np.ndarray, np.ndarray]:
-    """把退化特征转换为 GRU 序列，窗口末端健康度作为监督标签。"""
+    """把退化特征转换为 GRU 序列，并把健康度从 0–100 归一化到 0–1。"""
     if window_size < 1 or len(series.features) < window_size:
         raise ValueError(f"Invalid window_size={window_size} for {series.name}")
     x = np.stack([series.features[i - window_size + 1 : i + 1] for i in range(window_size - 1, len(series.features))])
-    y = series.health[window_size - 1 :, None]
+    # 归一化可避免 MSE 和内循环梯度随 0–100 标签尺度被放大约四个数量级。
+    y = series.health[window_size - 1 :, None] / 100.0
     return x.astype(np.float32), y.astype(np.float32)
+
+
+def domain_alignment_diagnostics(
+    source: list[BearingSeries],
+    targets: list[BearingSeries],
+    variance: float = 0.99,
+    sample_size: int = 500,
+    seed: int = 42,
+) -> tuple[list[dict[str, float | str]], int, float]:
+    """量化目标域对齐前后的均值、协方差和非线性 RBF-MMD 距离。"""
+    preprocessor = SourcePreprocessor(variance, "coral_mmd").fit(source)
+    source_values = np.concatenate(
+        [preprocessor.transform_source(item).features for item in source], axis=0
+    )
+    source_mean = source_values.mean(axis=0)
+    source_covariance = np.atleast_2d(np.cov(source_values, rowvar=False))
+    covariance_scale = max(float(np.linalg.norm(source_covariance)), 1e-12)
+    rng = np.random.default_rng(seed)
+
+    def rbf_mmd(first: np.ndarray, second: np.ndarray) -> float:
+        count = min(sample_size, len(first), len(second))
+        a = first[rng.choice(len(first), count, replace=False)]
+        b = second[rng.choice(len(second), count, replace=False)]
+        combined = np.concatenate([a, b], axis=0)
+        probe = combined[: min(300, len(combined))]
+        distances = np.sum((probe[:, None, :] - probe[None, :, :]) ** 2, axis=-1)
+        positive = distances[distances > 0]
+        median_distance = float(np.median(positive)) if positive.size else 1.0
+        gamma = 1.0 / max(2.0 * median_distance, 1e-12)
+        return float(
+            rbf_kernel(a, a, gamma=gamma).mean()
+            + rbf_kernel(b, b, gamma=gamma).mean()
+            - 2.0 * rbf_kernel(a, b, gamma=gamma).mean()
+        )
+
+    records: list[dict[str, float | str]] = []
+    for item in targets:
+        before = preprocessor._project(item.features)
+        after = preprocessor.transform_target(item).features
+        records.append(
+            {
+                "bearing": item.name,
+                "mean_distance_before": float(np.linalg.norm(before.mean(axis=0) - source_mean)),
+                "mean_distance_after": float(np.linalg.norm(after.mean(axis=0) - source_mean)),
+                "covariance_distance_before": float(
+                    np.linalg.norm(np.cov(before, rowvar=False) - source_covariance) / covariance_scale
+                ),
+                "covariance_distance_after": float(
+                    np.linalg.norm(np.cov(after, rowvar=False) - source_covariance) / covariance_scale
+                ),
+                "rbf_mmd_before": rbf_mmd(source_values, before),
+                "rbf_mmd_after": rbf_mmd(source_values, after),
+            }
+        )
+    return records, int(preprocessor.pca.n_components_), float(preprocessor.pca.explained_variance_ratio_.sum())

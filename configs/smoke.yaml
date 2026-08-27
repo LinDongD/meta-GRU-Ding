@@ -17,13 +17,16 @@ search:
   dropout: [0.0]
   window_size: [8]
   inner_steps: [1]
-  inner_lr: [0.001, 0.001]
-  outer_lr: [0.001, 0.001]
+  inner_lr: [0.0001, 0.0001]
+  outer_lr: [0.0001, 0.0001]
   weight_decay: [0.0]
-  meta_batch_size: [2]
-  support_size: [5]
-  query_size: [8]
+  meta_batch_size: [4]
+  subtasks_per_epoch: [20]
+  support_size: [9]
+  query_size: [9]
   first_order: [true]
+  inner_optimizer: [adam]
+  output_activation: [sigmoid]
 
 train:
   epochs: 1

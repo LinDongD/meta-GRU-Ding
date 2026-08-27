@@ -9,20 +9,23 @@ alignment: coral_mmd
 search:
   trials: 12
   validation_bearings: 2
-  episodes_per_validation_bearing: 3
-  epochs_per_trial: 25
-  hidden_size: [16, 32, 64, 128]
+  episodes_per_validation_bearing: 5
+  epochs_per_trial: 20
+  hidden_size: [32, 64, 128]
   num_layers: [1, 2]
-  dropout: [0.0, 0.1, 0.3]
+  dropout: [0.0, 0.1, 0.2]
   window_size: [8, 16, 32]
-  inner_steps: [1, 3, 5]
-  inner_lr: [0.0001, 0.01]
-  outer_lr: [0.0001, 0.003]
-  weight_decay: [0.0, 0.0001, 0.001]
-  meta_batch_size: [2, 4]
-  support_size: [5, 9, 16]
-  query_size: [8, 16, 32]
-  first_order: [true, false]
+  inner_steps: [1, 3]
+  inner_lr: [0.00001, 0.0005]
+  outer_lr: [0.00005, 0.001]
+  weight_decay: [0.0, 0.0001]
+  meta_batch_size: [4]
+  subtasks_per_epoch: [20]
+  support_size: [9]
+  query_size: [9]
+  first_order: [true]
+  inner_optimizer: [adam]
+  output_activation: [sigmoid]
 
 train:
   epochs: 100

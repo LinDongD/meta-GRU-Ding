@@ -40,10 +40,20 @@ class ExplicitGRUCell(nn.Module):
 
 class GRURegressor(nn.Module):
     """可堆叠的显式 GRU 回归器，输出窗口末端的健康度/RUL 百分比。"""
-    def __init__(self, input_size: int, hidden_size: int, num_layers: int, dropout: float) -> None:
+    def __init__(
+        self,
+        input_size: int,
+        hidden_size: int,
+        num_layers: int,
+        dropout: float,
+        output_activation: str = "linear",
+    ) -> None:
         super().__init__()
+        if output_activation not in {"linear", "sigmoid"}:
+            raise ValueError("output_activation must be 'linear' or 'sigmoid'")
         self.hidden_size = hidden_size
         self.dropout = dropout if num_layers > 1 else 0.0
+        self.output_activation = output_activation
         self.cells = nn.ModuleList(
             [ExplicitGRUCell(input_size if index == 0 else hidden_size, hidden_size) for index in range(num_layers)]
         )
@@ -59,4 +69,6 @@ class GRURegressor(nn.Module):
                 layer_input = hidden[layer_index]
                 if layer_index + 1 < len(self.cells):
                     layer_input = F.dropout(layer_input, p=self.dropout, training=self.training)
-        return self.head(hidden[-1])
+        output = self.head(hidden[-1])
+        # 归一化 RUL 使用 sigmoid 可确保预测落在 [0, 1]；linear 用于消融实验。
+        return torch.sigmoid(output) if self.output_activation == "sigmoid" else output

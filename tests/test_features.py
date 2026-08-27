@@ -24,3 +24,4 @@ def test_real_bearing_smoke() -> None:
     x, y = make_windows(series, 8)
     assert x.shape == (345, 8, 60)
     assert y.shape == (345, 1)
+    assert 0.0 <= float(y.min()) <= float(y.max()) <= 1.0

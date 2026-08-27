@@ -19,7 +19,7 @@ from tqdm.auto import tqdm
 from .features import BearingSeries, load_or_extract_dataset
 from .maml import evaluate_episode, evaluate_episode_detailed, meta_step, sample_episode
 from .model import GRURegressor
-from .preprocessing import SourcePreprocessor, make_windows
+from .preprocessing import SourcePreprocessor, domain_alignment_diagnostics, make_windows
 from .visualization import (
     plot_epoch_metrics,
     plot_search_trials,
@@ -92,8 +92,11 @@ def sample_hparams(search: dict[str, Any], rng: np.random.Generator) -> dict[str
         "support_size",
         "query_size",
         "first_order",
+        "subtasks_per_epoch",
+        "inner_optimizer",
+        "output_activation",
     ]
-    result = {name: rng.choice(search[name]).item() for name in categorical}
+    result = {name: rng.choice(search[name]).item() for name in categorical if name in search}
     result["inner_lr"] = log_uniform(rng, search["inner_lr"])
     result["outer_lr"] = log_uniform(rng, search["outer_lr"])
     return result
@@ -129,12 +132,21 @@ def fit_model(
     """训练一个 Meta-GRU，并实时显示/保存每个 epoch 的 MSE 与 RMSE。"""
     seed_everything(seed)
     rng = np.random.default_rng(seed)
-    model = GRURegressor(input_size, int(hparams["hidden_size"]), int(hparams["num_layers"]), float(hparams["dropout"])).to(device)
+    model = GRURegressor(
+        input_size,
+        int(hparams["hidden_size"]),
+        int(hparams["num_layers"]),
+        float(hparams["dropout"]),
+        output_activation=str(hparams.get("output_activation", "linear")),
+    ).to(device)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=float(hparams["outer_lr"]), weight_decay=float(hparams["weight_decay"])
     )
-    names = list(tasks)
-    batch_size = min(int(hparams["meta_batch_size"]), len(names))
+    # 论文的 M 个子任务来自源域样本的随机组合，而不是把一个轴承固定成一个任务。
+    pooled_x = np.concatenate([values[0] for values in tasks.values()], axis=0)
+    pooled_y = np.concatenate([values[1] for values in tasks.values()], axis=0)
+    batch_size = int(hparams["meta_batch_size"])
+    subtasks_per_epoch = int(hparams.get("subtasks_per_epoch", 20))
     history: list[dict[str, Any]] = []
     started = time.perf_counter()
     progress = tqdm(range(1, epochs + 1), desc=f"{phase}", unit="epoch", dynamic_ncols=True)
@@ -143,28 +155,35 @@ def fit_model(
         model.train()
         if device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(device)
-        selected = rng.choice(names, size=batch_size, replace=False)
-        episodes = [
-            sample_episode(
-                *tasks[name],
-                int(hparams["support_size"]),
-                int(hparams["query_size"]),
-                rng,
-                device,
+        batch_metrics: list[dict[str, float]] = []
+        # 每轮构造 M 个新子任务，并按 meta_batch_size 分批完成多次 outer update。
+        for start in range(0, subtasks_per_epoch, batch_size):
+            current_batch = min(batch_size, subtasks_per_epoch - start)
+            episodes = [
+                sample_episode(
+                    pooled_x,
+                    pooled_y,
+                    int(hparams["support_size"]),
+                    int(hparams["query_size"]),
+                    rng,
+                    device,
+                )
+                for _ in range(current_batch)
+            ]
+            batch_metrics.append(
+                meta_step(
+                    model,
+                    optimizer,
+                    episodes,
+                    float(hparams["inner_lr"]),
+                    int(hparams["inner_steps"]),
+                    bool(hparams["first_order"]),
+                    gradient_clip,
+                    inner_optimizer=str(hparams.get("inner_optimizer", "sgd")),
+                )
             )
-            for name in selected
-        ]
-        step_metrics = meta_step(
-            model,
-            optimizer,
-            episodes,
-            float(hparams["inner_lr"]),
-            int(hparams["inner_steps"]),
-            bool(hparams["first_order"]),
-            gradient_clip,
-        )
-        train_loss = step_metrics["loss"]
-        train_rmse = step_metrics["rmse"]
+        train_loss = float(np.mean([item["loss"] for item in batch_metrics]))
+        train_rmse = float(math.sqrt(max(train_loss, 0.0)) * 100.0)
         record = {
             "phase": phase,
             "trial": trial,
@@ -172,7 +191,7 @@ def fit_model(
             "total_epochs": epochs,
             "train_loss": train_loss,
             "train_rmse": train_rmse,
-            "gradient_norm": step_metrics["gradient_norm"],
+            "gradient_norm": float(np.mean([item["gradient_norm"] for item in batch_metrics])),
             "outer_lr": float(optimizer.param_groups[0]["lr"]),
             "epoch_seconds": time.perf_counter() - epoch_started,
             "elapsed_seconds": time.perf_counter() - started,
@@ -201,7 +220,15 @@ def validation_score(
     for x, y in tasks.values():
         for _ in range(repeats):
             episode = sample_episode(x, y, int(hparams["support_size"]), int(hparams["query_size"]), rng, device)
-            scores.append(evaluate_episode(model, episode, float(hparams["inner_lr"]), int(hparams["inner_steps"]))["mae"])
+            scores.append(
+                evaluate_episode(
+                    model,
+                    episode,
+                    float(hparams["inner_lr"]),
+                    int(hparams["inner_steps"]),
+                    inner_optimizer=str(hparams.get("inner_optimizer", "sgd")),
+                )["mae"]
+            )
     return float(np.mean(scores))
 
 
@@ -225,6 +252,10 @@ def run(config_path: Path, output_dir: Path) -> None:
     target = [item for item in dataset if item.condition == int(config["target_condition"])]
     if len(source) < 3 or not target:
         raise ValueError("The selected conditions do not provide enough source/target bearings")
+
+    alignment_records, pca_components, pca_explained_variance = domain_alignment_diagnostics(
+        source, target, float(config["pca_variance"]), seed=seed
+    )
 
     shuffled = source.copy()
     rng.shuffle(shuffled)
@@ -322,9 +353,10 @@ def run(config_path: Path, output_dir: Path) -> None:
                 x,
                 float(best_hparams["inner_lr"]),
                 int(best_hparams["inner_steps"]),
+                inner_optimizer=str(best_hparams.get("inner_optimizer", "sgd")),
             )
             target_results.append({"bearing": name, "trial": repeat, **metrics})
-            query_truth = episode.query_y.detach().cpu().numpy().reshape(-1)
+            query_truth = episode.query_y.detach().cpu().numpy().reshape(-1) * 100.0
             for sample_index, truth, prediction in zip(episode.query_indices, query_truth, query_prediction):
                 error = float(prediction - truth)
                 query_predictions.append(
@@ -343,14 +375,17 @@ def run(config_path: Path, output_dir: Path) -> None:
             # 第一次 episode 保存该轴承完整寿命曲线；support 点单独标记。
             if repeat == 0:
                 support_indices = set(int(value) for value in episode.support_indices)
-                for sample_index, (truth, prediction) in enumerate(zip(y.reshape(-1), full_prediction)):
+                for sample_index, (truth_normalized, prediction) in enumerate(
+                    zip(y.reshape(-1), full_prediction)
+                ):
+                    truth = float(truth_normalized * 100.0)
                     curve_predictions.append(
                         {
                             "bearing": name,
                             "trial": repeat,
                             "sample_index": sample_index,
                             "acquisition_index": int(sample_index + best_hparams["window_size"] - 1),
-                            "true_rul": float(truth),
+                            "true_rul": truth,
                             "predicted_rul": float(prediction),
                             "error": float(prediction - truth),
                             "absolute_error": float(abs(prediction - truth)),
@@ -358,6 +393,41 @@ def run(config_path: Path, output_dir: Path) -> None:
                         }
                     )
 
+    # 使用相同随机种子和 episode 索引评价“不对齐”消融，直接判断对齐是否改善预测。
+    _, target_tasks_without_alignment, _ = prepare_tasks(
+        source,
+        target,
+        float(config["pca_variance"]),
+        "none",
+        int(best_hparams["window_size"]),
+    )
+    no_alignment_rng = np.random.default_rng(seed + 30_000)
+    no_alignment_mae: list[float] = []
+    for x, y in target_tasks_without_alignment.values():
+        for _ in range(int(config["train"]["target_trials"])):
+            episode = sample_episode(
+                x,
+                y,
+                int(best_hparams["support_size"]),
+                int(best_hparams["query_size"]),
+                no_alignment_rng,
+                device,
+            )
+            no_alignment_mae.append(
+                evaluate_episode(
+                    final_model,
+                    episode,
+                    float(best_hparams["inner_lr"]),
+                    int(best_hparams["inner_steps"]),
+                    inner_optimizer=str(best_hparams.get("inner_optimizer", "sgd")),
+                )["mae"]
+            )
+
+    target_mae = float(np.mean([item["mae"] for item in target_results]))
+    target_mae_without_alignment = float(np.mean(no_alignment_mae))
+    constant_50_mae = float(
+        np.mean([abs(item["true_rul"] - 50.0) for item in query_predictions])
+    )
     summary = {
         "paper": "Ding et al., Applied Soft Computing 104 (2021) 107211",
         "source_condition": config["source_condition"],
@@ -366,11 +436,16 @@ def run(config_path: Path, output_dir: Path) -> None:
         "device_name": device_description,
         "torch_version": torch.__version__,
         "cuda_version": torch.version.cuda,
+        "pca_components": pca_components,
+        "pca_explained_variance": pca_explained_variance,
         "best_validation_mae": best_score,
         "best_hparams": best_hparams,
-        "target_mae_mean": float(np.mean([item["mae"] for item in target_results])),
+        "target_mae_mean": target_mae,
         "target_mae_std": float(np.std([item["mae"] for item in target_results])),
         "target_rmse_mean": float(np.mean([item["rmse"] for item in target_results])),
+        "target_mae_without_alignment": target_mae_without_alignment,
+        "alignment_mae_improvement": target_mae_without_alignment - target_mae,
+        "constant_50_mae": constant_50_mae,
     }
     metrics_dir = output_dir / "metrics"
     plots_dir = output_dir / "plots"
@@ -380,11 +455,17 @@ def run(config_path: Path, output_dir: Path) -> None:
     pd.DataFrame(target_results).to_csv(metrics_dir / "target_trial_metrics.csv", index=False, encoding="utf-8-sig")
     pd.DataFrame(query_predictions).to_csv(metrics_dir / "target_query_predictions.csv", index=False, encoding="utf-8-sig")
     pd.DataFrame(curve_predictions).to_csv(metrics_dir / "target_full_curves.csv", index=False, encoding="utf-8-sig")
+    pd.DataFrame(alignment_records).to_csv(
+        metrics_dir / "domain_alignment_diagnostics.csv", index=False, encoding="utf-8-sig"
+    )
     plot_epoch_metrics(epoch_records, plots_dir)
     plot_search_trials(trials, plots_dir)
     plot_target_predictions(query_predictions, curve_predictions, plots_dir)
     plot_target_trial_metrics(target_results, plots_dir)
-    torch.save({"model_state": final_model.state_dict(), "input_size": input_size, "hparams": best_hparams}, output_dir / "model.pt")
+    torch.save(
+        {"model_state": final_model.state_dict(), "input_size": input_size, "hparams": best_hparams},
+        output_dir / "model.pt",
+    )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
