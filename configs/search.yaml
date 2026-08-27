@@ -30,5 +30,5 @@ search:
 train:
   epochs: 100
   gradient_clip: 5.0
-  target_trials: 20
+  target_trials: 100
   device: auto
