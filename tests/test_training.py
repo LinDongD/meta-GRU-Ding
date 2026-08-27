@@ -6,7 +6,7 @@ import torch
 from meta_gru.train import EpochMetricLogger, fit_model
 
 
-def test_fit_model_writes_epoch_metrics(tmp_path: Path) -> None:
+def test_fit_model_writes_epoch_metrics(workspace_tmp_path: Path) -> None:
     """检查训练入口会为每个 epoch 写入完整指标。"""
     rng = np.random.default_rng(12)
     tasks = {}
@@ -27,7 +27,7 @@ def test_fit_model_writes_epoch_metrics(tmp_path: Path) -> None:
         "inner_steps": 1,
         "first_order": True,
     }
-    path = tmp_path / "epoch_metrics.csv"
+    path = workspace_tmp_path / "epoch_metrics.csv"
     logger = EpochMetricLogger(path)
     try:
         _, history = fit_model(

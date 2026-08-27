@@ -8,7 +8,7 @@ from meta_gru.visualization import (
 )
 
 
-def test_all_plots_are_created(tmp_path: Path) -> None:
+def test_all_plots_are_created(workspace_tmp_path: Path) -> None:
     """用极小模拟结果检查训练曲线和 RUL 图能够无界面生成。"""
     epochs = [
         {"phase": "final", "epoch": 1, "train_loss": 4.0, "train_rmse": 2.0, "gradient_norm": 3.0, "epoch_seconds": 0.2, "gpu_peak_memory_mb": 10.0},
@@ -23,15 +23,15 @@ def test_all_plots_are_created(tmp_path: Path) -> None:
         {"bearing": "Bearing2_1", "sample_index": 0, "true_rul": 100.0, "predicted_rul": 95.0, "is_support": True},
         {"bearing": "Bearing2_1", "sample_index": 1, "true_rul": 0.0, "predicted_rul": 4.0, "is_support": False},
     ]
-    plot_epoch_metrics(epochs, tmp_path)
-    plot_search_trials(trials, tmp_path)
-    plot_target_predictions(query, curves, tmp_path)
+    plot_epoch_metrics(epochs, workspace_tmp_path)
+    plot_search_trials(trials, workspace_tmp_path)
+    plot_target_predictions(query, curves, workspace_tmp_path)
     plot_target_trial_metrics(
         [
             {"bearing": "Bearing2_1", "mae": 5.0, "rmse": 6.0},
             {"bearing": "Bearing2_1", "mae": 4.0, "rmse": 5.0},
         ],
-        tmp_path,
+        workspace_tmp_path,
     )
     expected = {
         "epoch_loss_rmse.png",
@@ -42,4 +42,4 @@ def test_all_plots_are_created(tmp_path: Path) -> None:
         "rul_residuals_and_absolute_error.png",
         "target_trial_mae_rmse.png",
     }
-    assert expected == {path.name for path in tmp_path.glob("*.png")}
+    assert expected == {path.name for path in workspace_tmp_path.glob("*.png")}
